@@ -48,7 +48,7 @@
         <div>
           <p class="kicker">Etapa 1</p>
           <h2 id="titulo-dados">Informe suas práticas</h2>
-          <p>Use valores médios mensais. Nenhum campo pessoal é obrigatório.</p>
+          <p>Informe seu nome e e-mail. O resultado será salvo automaticamente após o cálculo.</p>
         </div>
         <button class="icon-button" id="clear-button" type="button" title="Limpar formulário" aria-label="Limpar formulário">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3m-8 0 1 13h8l1-13M10 11v5m4-5v5"/></svg>
@@ -56,6 +56,25 @@
       </div>
 
       <form id="carbon-form" novalidate>
+        <fieldset>
+          <legend>Identificação e envio</legend>
+          <p class="fieldset-help">O nome e o e-mail são obrigatórios para identificar o registro.</p>
+          <div class="field-grid field-grid--two">
+            <label class="field">
+              <span>Nome completo <small>(obrigatório)</small></span>
+              <input id="nome" name="nome" type="text" maxlength="160" autocomplete="name" placeholder="Digite seu nome" required>
+            </label>
+            <label class="field">
+              <span>E-mail <small>(obrigatório)</small></span>
+              <input id="email" name="email" type="email" maxlength="200" autocomplete="email" placeholder="nome@exemplo.com" required>
+            </label>
+          </div>
+          <label class="checkbox-field" for="enviar-email">
+            <input id="enviar-email" name="enviarEmail" type="checkbox" checked>
+            <span>Enviar uma cópia do resultado para o e-mail informado</span>
+          </label>
+        </fieldset>
+
         <fieldset>
           <legend>Localização</legend>
           <div class="field-grid field-grid--two">
@@ -129,16 +148,13 @@
 
         <div id="form-alert" class="alert" role="alert" aria-live="assertive" hidden></div>
 
-        <div class="form-actions">
+        <div class="form-actions form-actions--single">
           <button class="button button--primary" id="calculate-button" type="submit">
-            Calcular impacto
-          </button>
-          <button class="button button--secondary" id="save-button" type="button" disabled>
-            Salvar resultado na planilha
+            Calcular e salvar automaticamente
           </button>
         </div>
         <p class="privacy-note">
-          O resultado só é enviado ao Google Sheets quando você selecionar “Salvar resultado na planilha”.
+          Após o cálculo, o resultado é salvo primeiro neste dispositivo e sincronizado automaticamente com o Google Sheets.
         </p>
       </form>
     </section>
@@ -213,7 +229,7 @@
         <p class="kicker">Metodologia</p>
         <h2 id="titulo-referencias">Fatores utilizados no projeto original</h2>
       </div>
-      <span class="method-badge">Modelo 1.0.0</span>
+      <span class="method-badge">Modelo 1.2.0</span>
     </div>
 
     <div class="reference-grid">

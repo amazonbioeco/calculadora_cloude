@@ -150,6 +150,66 @@ async function readRequestBody(request) {
   return Buffer.concat(chunks).toString('utf8');
 }
 
+async function proxyBackendHealth(response) {
+  if (!APPS_SCRIPT_ENDPOINT || !isAllowedAppsScriptEndpoint(APPS_SCRIPT_ENDPOINT)) {
+    sendJson(response, 503, {
+      success: false,
+      spreadsheetReady: false,
+      message: 'A variável APPS_SCRIPT_ENDPOINT não está configurada corretamente no Cloud Run.'
+    });
+    return;
+  }
+
+  try {
+    const healthUrl = new URL(APPS_SCRIPT_ENDPOINT);
+    healthUrl.searchParams.set('action', 'health');
+    const upstream = await fetch(healthUrl, {
+      method: 'GET',
+      headers: { 'User-Agent': 'AmazonBioEco-CloudRun/1.2' },
+      redirect: 'follow',
+      signal: AbortSignal.timeout(20000)
+    });
+
+    const upstreamText = await upstream.text();
+    let upstreamData;
+    try {
+      upstreamData = JSON.parse(upstreamText);
+    } catch {
+      const looksLikeHtml = /^\s*</.test(upstreamText);
+      sendJson(response, 502, {
+        success: false,
+        spreadsheetReady: false,
+        message: looksLikeHtml
+          ? 'O Apps Script está exigindo login ou não foi publicado como Web App público. Configure o acesso como Qualquer pessoa e use a URL /exec.'
+          : 'O teste do Apps Script retornou uma resposta inválida.'
+      });
+      return;
+    }
+
+    const hasSpreadsheetStatus = typeof upstreamData?.spreadsheetReady === 'boolean';
+    const ready = Boolean(upstream.ok && upstreamData?.success && upstreamData?.spreadsheetReady === true);
+    sendJson(response, ready ? 200 : 503, {
+      ...upstreamData,
+      success: ready,
+      spreadsheetReady: ready,
+      message: !hasSpreadsheetStatus
+        ? 'A implantação do Apps Script está desatualizada. Publique uma nova versão com o Code.gs 1.2.0.'
+        : (upstreamData?.message || (ready
+          ? 'Google Sheets conectado.'
+          : 'A planilha ainda não está pronta para receber dados.'))
+    });
+  } catch (error) {
+    console.error('Falha no diagnóstico do Apps Script:', error);
+    sendJson(response, 502, {
+      success: false,
+      spreadsheetReady: false,
+      message: error?.name === 'TimeoutError'
+        ? 'O Apps Script demorou mais que o esperado para responder ao diagnóstico.'
+        : String(error?.message || 'Não foi possível testar a conexão com o Apps Script.').slice(0, 300)
+    });
+  }
+}
+
 async function proxyCalculation(request, response) {
   if (!APPS_SCRIPT_ENDPOINT || !isAllowedAppsScriptEndpoint(APPS_SCRIPT_ENDPOINT)) {
     sendJson(response, 503, {
@@ -178,7 +238,7 @@ async function proxyCalculation(request, response) {
       method: 'POST',
       headers: {
         'Content-Type': 'text/plain;charset=UTF-8',
-        'User-Agent': 'AmazonBioEco-CloudRun/1.1'
+        'User-Agent': 'AmazonBioEco-CloudRun/1.2'
       },
       body: JSON.stringify(parsed),
       redirect: 'follow',
@@ -190,9 +250,12 @@ async function proxyCalculation(request, response) {
     try {
       upstreamData = JSON.parse(upstreamText);
     } catch {
+      const looksLikeHtml = /^\s*</.test(upstreamText);
       sendJson(response, 502, {
         success: false,
-        message: 'O Apps Script retornou uma resposta inválida.'
+        message: looksLikeHtml
+          ? 'O Apps Script retornou uma página HTML em vez de JSON. Verifique se a implantação é do tipo Aplicativo da Web, se a URL termina em /exec e se o acesso está definido como Qualquer pessoa.'
+          : 'O Apps Script retornou uma resposta inválida. Publique uma nova versão do Web App e confira a variável APPS_SCRIPT_ENDPOINT.'
       });
       return;
     }
@@ -226,6 +289,16 @@ const server = http.createServer(async (request, response) => {
       service: 'calculadora-carbono-amazonbioeco',
       googleSheetsBackendConfigured: Boolean(APPS_SCRIPT_ENDPOINT)
     });
+    return;
+  }
+
+  if (url.pathname === '/api/backend-health') {
+    if (request.method !== 'GET') {
+      response.setHeader('Allow', 'GET');
+      sendJson(response, 405, { success: false, message: 'Método não permitido.' });
+      return;
+    }
+    await proxyBackendHealth(response);
     return;
   }
 

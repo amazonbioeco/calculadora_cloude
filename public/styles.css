@@ -148,6 +148,10 @@ input[type="range"] { min-height: auto; padding: 0; border: 0; accent-color: var
 .icon-button svg { width: 21px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .icon-button--danger { color: var(--danger); background: var(--danger-soft); }
 .form-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .75rem; padding-top: 1.25rem; border-top: 1px solid var(--line); }
+.form-actions--single { grid-template-columns: 1fr; }
+.checkbox-field { display: flex; align-items: flex-start; gap: .7rem; margin-top: 1rem; padding: .85rem .95rem; border: 1px solid var(--line); border-radius: var(--radius-sm); color: var(--ink-700); background: var(--surface-soft); cursor: pointer; font-size: .86rem; font-weight: 720; }
+.checkbox-field input { flex: 0 0 auto; width: 19px; min-height: 19px; height: 19px; margin: .12rem 0 0; padding: 0; accent-color: var(--green-600); }
+.checkbox-field span { line-height: 1.4; }
 .privacy-note { margin: .8rem 0 0; color: var(--ink-500); font-size: .76rem; text-align: center; }
 .alert { margin: 0 0 1rem; padding: .8rem .9rem; border: 1px solid #f1bbb5; border-radius: .7rem; color: #8a1c14; background: var(--danger-soft); font-size: .86rem; font-weight: 720; }
 

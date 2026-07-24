@@ -1,5 +1,5 @@
 import { APP_CONFIG } from './config.js';
-import { isEndpointConfigured, sendCalculation } from './api.js';
+import { getBackendHealth, isEndpointConfigured, sendCalculation } from './api.js';
 import {
   clearDraft,
   enqueueOperation,
@@ -28,7 +28,6 @@ const productTemplate = document.querySelector('#product-template');
 const compostagem = document.querySelector('#compostagem');
 const compostagemOutput = document.querySelector('#compostagem-output');
 const calculateButton = document.querySelector('#calculate-button');
-const saveButton = document.querySelector('#save-button');
 const clearButton = document.querySelector('#clear-button');
 const addProductButton = document.querySelector('#add-product-button');
 const formAlert = document.querySelector('#form-alert');
@@ -45,6 +44,11 @@ let currentCalculation = null;
 let isSyncing = false;
 let installPrompt = null;
 let draftTimer = null;
+let backendStatus = {
+  checked: false,
+  ready: null,
+  message: ''
+};
 
 function formatNumber(value, maximumFractionDigits = 2) {
   return new Intl.NumberFormat('pt-BR', { maximumFractionDigits }).format(Number(value) || 0);
@@ -72,6 +76,10 @@ function sanitizeText(value, maxLength) {
   return String(value || '').replace(/[<>]/g, '').trim().slice(0, maxLength);
 }
 
+function isValidEmail(value) {
+  return /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/i.test(String(value || ''));
+}
+
 function collectProducts() {
   return [...productsContainer.querySelectorAll('.product-row')].map((row) => {
     const type = row.querySelector('.product-type').value;
@@ -82,6 +90,9 @@ function collectProducts() {
 
 function collectFormData() {
   return {
+    nome: sanitizeText(document.querySelector('#nome').value, 160),
+    email: sanitizeText(document.querySelector('#email').value, 200).toLowerCase(),
+    enviarEmail: document.querySelector('#enviar-email').checked,
     estado: document.querySelector('#estado').value,
     municipio: sanitizeText(document.querySelector('#municipio').value, 120),
     papel: numberValue('papel'),
@@ -95,13 +106,20 @@ function collectFormData() {
 }
 
 function validateData(data) {
+  if (data.nome.length < 2) {
+    throw new Error('Informe seu nome completo.');
+  }
+  if (!isValidEmail(data.email)) {
+    throw new Error('Informe um endereço de e-mail válido.');
+  }
+  if (!CARBON_FOOTPRINTS[data.estado]) {
+    throw new Error('Selecione um estado válido.');
+  }
+
   const totalInputs = data.papel + data.plastico + data.vidro + data.metal + data.compostagem +
     data.produtos.reduce((sum, item) => sum + item.area, 0);
   if (totalInputs <= 0) {
     throw new Error('Informe ao menos uma quantidade de reciclagem, compostagem ou área produtiva.');
-  }
-  if (!CARBON_FOOTPRINTS[data.estado]) {
-    throw new Error('Selecione um estado válido.');
   }
 }
 
@@ -199,8 +217,10 @@ function renderResult(calculation) {
   const { input, results } = calculation;
   emptyResult.hidden = true;
   resultContent.hidden = false;
-  saveButton.disabled = false;
-  resultStatus.textContent = `Cálculo realizado em ${new Intl.DateTimeFormat('pt-BR', { dateStyle: 'short', timeStyle: 'short' }).format(new Date(calculation.calculatedAt))}.`;
+  resultStatus.textContent = `Cálculo realizado em ${new Intl.DateTimeFormat('pt-BR', {
+    dateStyle: 'short',
+    timeStyle: 'short'
+  }).format(new Date(calculation.calculatedAt))}. Salvamento automático ativado.`;
 
   document.querySelector('#total-reduction').textContent = `${formatNumber(results.totalAnnual)} kg CO₂e/ano`;
   document.querySelector('#regional-comparison').textContent =
@@ -238,8 +258,6 @@ function renderResult(calculation) {
     details.textContent = 'Nenhuma área produtiva foi informada.';
   }
 
-  saveStatus.textContent = '';
-  saveStatus.className = 'save-status';
   track('carbon_calculation', {
     state: input.estado,
     model_version: calculation.modelVersion,
@@ -258,6 +276,12 @@ function clearFormError() {
   formAlert.textContent = '';
 }
 
+function setSaveStatus(message, state = '') {
+  saveStatus.textContent = message;
+  saveStatus.className = 'save-status';
+  if (state) saveStatus.classList.add(`is-${state}`);
+}
+
 function serializeDraft() {
   return collectFormData();
 }
@@ -265,7 +289,11 @@ function serializeDraft() {
 function scheduleDraftSave() {
   clearTimeout(draftTimer);
   draftTimer = setTimeout(async () => {
-    try { await saveDraft(serializeDraft()); } catch (error) { console.warn(error); }
+    try {
+      await saveDraft(serializeDraft());
+    } catch (error) {
+      console.warn(error);
+    }
   }, 350);
 }
 
@@ -276,6 +304,10 @@ async function restoreDraft() {
       addProduct();
       return;
     }
+
+    document.querySelector('#nome').value = draft.nome || '';
+    document.querySelector('#email').value = draft.email || '';
+    document.querySelector('#enviar-email').checked = draft.enviarEmail !== false;
     document.querySelector('#estado').value = CARBON_FOOTPRINTS[draft.estado] ? draft.estado : 'RR';
     document.querySelector('#municipio').value = draft.municipio || '';
     ['papel', 'plastico', 'vidro', 'metal'].forEach((key) => {
@@ -308,35 +340,95 @@ async function queueCalculation(calculation, reason = '') {
   return operation;
 }
 
-async function saveCurrentCalculation() {
-  if (!currentCalculation) return;
-  saveButton.disabled = true;
-  saveStatus.className = 'save-status';
-  saveStatus.textContent = 'Salvando resultado…';
+function applyServerCalculation(response) {
+  if (!currentCalculation || !response?.calculated) return;
+  currentCalculation = {
+    ...currentCalculation,
+    modelVersion: response.modelVersion || currentCalculation.modelVersion,
+    results: response.calculated
+  };
+  renderResult(currentCalculation);
+}
 
-  if (!navigator.onLine || !isEndpointConfigured()) {
-    await queueCalculation(currentCalculation, navigator.onLine ? 'Endpoint não configurado.' : 'Sem conexão.');
-    saveStatus.textContent = navigator.onLine
-      ? 'Resultado salvo no dispositivo. Configure o endpoint para sincronizar.'
-      : 'Resultado salvo no dispositivo e aguardando internet.';
-    saveStatus.classList.add('is-warning');
-    saveButton.disabled = false;
+function successMessageForResponse(response, calculation) {
+  const duplicateText = response.duplicate
+    ? 'O resultado já estava registrado na planilha.'
+    : 'Resultado salvo automaticamente na planilha.';
+
+  if (!calculation.input.enviarEmail) {
+    return duplicateText;
+  }
+  if (response.email?.sent) {
+    return `${duplicateText} Uma cópia foi enviada para ${calculation.input.email}.`;
+  }
+  return `${duplicateText} O e-mail não foi enviado: ${response.email?.message || 'falha não identificada'}.`;
+}
+
+async function saveCalculationAutomatically(calculation) {
+  await queueCalculation(calculation);
+  setSaveStatus('Resultado salvo neste dispositivo. Sincronizando com o Google Sheets…');
+
+  if (!navigator.onLine) {
+    setSaveStatus('Sem internet. O resultado ficou salvo neste dispositivo e será enviado automaticamente quando a conexão voltar.', 'warning');
+    return;
+  }
+
+  if (!isEndpointConfigured()) {
+    setSaveStatus('O endpoint de sincronização não está configurado. O resultado permanece salvo neste dispositivo.', 'warning');
     return;
   }
 
   try {
-    const response = await sendCalculation(currentCalculation);
-    saveStatus.textContent = response.duplicate
-      ? 'Este resultado já estava registrado na planilha.'
-      : 'Resultado salvo com sucesso na planilha.';
-    saveStatus.classList.add('is-success');
-    track('carbon_calculation_saved', { state: currentCalculation.input.estado });
+    const response = await sendCalculation(calculation);
+    applyServerCalculation(response);
+
+    const emailFailed = calculation.input.enviarEmail && !response.email?.sent;
+    if (emailFailed) {
+      await updateOperation({
+        id: calculation.operationId,
+        type: 'create',
+        payload: calculation,
+        createdAt: calculation.calculatedAt,
+        updatedAt: new Date().toISOString(),
+        attempts: 1,
+        status: 'pending',
+        lastError: response.email?.message || 'O e-mail ainda não foi enviado.',
+        nextAttemptAt: new Date(Date.now() + retryDelay(1)).toISOString()
+      });
+    } else {
+      await removeOperation(calculation.operationId);
+    }
+    setSaveStatus(successMessageForResponse(response, calculation), emailFailed ? 'warning' : 'success');
+    backendStatus = {
+      checked: true,
+      ready: true,
+      message: 'Google Sheets conectado.'
+    };
+    track('carbon_calculation_saved', { state: calculation.input.estado });
   } catch (error) {
-    await queueCalculation(currentCalculation, error.message);
-    saveStatus.textContent = 'Não foi possível enviar agora. O resultado ficou salvo neste dispositivo.';
-    saveStatus.classList.add('is-warning');
+    const pending = {
+      id: calculation.operationId,
+      type: 'create',
+      payload: calculation,
+      createdAt: calculation.calculatedAt,
+      updatedAt: new Date().toISOString(),
+      attempts: 1,
+      status: 'pending',
+      lastError: error.message,
+      nextAttemptAt: new Date(Date.now() + retryDelay(1)).toISOString()
+    };
+    await updateOperation(pending);
+    backendStatus = {
+      checked: true,
+      ready: false,
+      message: error.message
+    };
+    setSaveStatus(
+      `Não foi possível sincronizar: ${error.message} O resultado continua salvo neste dispositivo.`,
+      'warning'
+    );
   } finally {
-    saveButton.disabled = false;
+    await updateConnectionStatus();
   }
 }
 
@@ -357,10 +449,29 @@ async function flushQueue(force = false) {
       if (!force && operation.nextAttemptAt && Date.now() < new Date(operation.nextAttemptAt).getTime()) continue;
 
       try {
-        await sendCalculation(operation.payload);
-        await removeOperation(operation.id);
+        const response = await sendCalculation(operation.payload);
+        const emailFailed = operation.payload.input.enviarEmail && !response.email?.sent;
+        if (emailFailed) {
+          const attempts = operation.attempts + 1;
+          await updateOperation({
+            ...operation,
+            attempts,
+            status: attempts >= APP_CONFIG.maxSyncAttempts ? 'error' : 'pending',
+            lastError: response.email?.message || 'O e-mail ainda não foi enviado.',
+            updatedAt: new Date().toISOString(),
+            nextAttemptAt: new Date(Date.now() + retryDelay(attempts)).toISOString()
+          });
+        } else {
+          await removeOperation(operation.id);
+        }
+        backendStatus = { checked: true, ready: true, message: 'Google Sheets conectado.' };
+
+        if (currentCalculation?.operationId === operation.id) {
+          applyServerCalculation(response);
+          setSaveStatus(successMessageForResponse(response, operation.payload), emailFailed ? 'warning' : 'success');
+        }
       } catch (error) {
-        const attempts = force ? 1 : operation.attempts + 1;
+        const attempts = force ? operation.attempts + 1 : operation.attempts + 1;
         await updateOperation({
           ...operation,
           attempts,
@@ -369,6 +480,7 @@ async function flushQueue(force = false) {
           updatedAt: new Date().toISOString(),
           nextAttemptAt: new Date(Date.now() + retryDelay(attempts)).toISOString()
         });
+        backendStatus = { checked: true, ready: false, message: error.message };
       }
     }
   } finally {
@@ -378,9 +490,33 @@ async function flushQueue(force = false) {
   }
 }
 
+async function refreshBackendHealth() {
+  if (!navigator.onLine || !isEndpointConfigured()) return;
+  try {
+    const health = await getBackendHealth();
+    backendStatus = {
+      checked: true,
+      ready: Boolean(health.httpOk && health.success && health.spreadsheetReady !== false),
+      message: health.message || (health.spreadsheetReady === false
+        ? 'A planilha ainda não está pronta.'
+        : 'Google Sheets conectado.')
+    };
+  } catch (error) {
+    backendStatus = {
+      checked: true,
+      ready: false,
+      message: error.message
+    };
+  }
+}
+
 async function updateConnectionStatus() {
   let pending = [];
-  try { pending = await listPendingOperations(); } catch { /* armazenamento opcional */ }
+  try {
+    pending = await listPendingOperations();
+  } catch {
+    // O armazenamento local é opcional em navegadores incompatíveis.
+  }
   const pendingCount = pending.length;
 
   connectionBar.classList.toggle('is-offline', !navigator.onLine);
@@ -398,25 +534,34 @@ async function updateConnectionStatus() {
     connectionBar.classList.add('has-error');
     connectionText.textContent = pendingCount
       ? `Endpoint não configurado. ${pendingCount} resultado(s) permanecem no dispositivo.`
-      : 'Integração com o Google Sheets indisponível. Os cálculos continuam funcionando.';
+      : 'Integração com o Google Sheets indisponível.';
+    return;
+  }
+
+  if (backendStatus.checked && backendStatus.ready === false) {
+    connectionBar.classList.add('has-error');
+    connectionText.textContent = pendingCount
+      ? `${backendStatus.message} ${pendingCount} resultado(s) permanecem no dispositivo.`
+      : backendStatus.message;
     return;
   }
 
   connectionText.textContent = pendingCount
     ? `${pendingCount} resultado(s) aguardando sincronização.`
-    : 'Online e pronto para salvar no Google Sheets.';
+    : 'Online e pronto para salvar automaticamente no Google Sheets.';
 }
 
 async function resetForm() {
   const confirmed = window.confirm('Limpar todos os dados preenchidos e o resultado atual?');
   if (!confirmed) return;
+
   form.reset();
+  document.querySelector('#enviar-email').checked = true;
   compostagem.value = 0;
   compostagemOutput.value = '0 kg';
   productsContainer.replaceChildren();
   addProduct();
   currentCalculation = null;
-  saveButton.disabled = true;
   emptyResult.hidden = false;
   resultContent.hidden = true;
   resultStatus.textContent = 'Preencha os dados para calcular.';
@@ -424,14 +569,30 @@ async function resetForm() {
   await clearDraft();
 }
 
-form.addEventListener('submit', (event) => {
+form.addEventListener('submit', async (event) => {
   event.preventDefault();
   clearFormError();
+
+  if (!form.reportValidity()) {
+    showFormError('Preencha corretamente o nome, o e-mail e os demais campos obrigatórios.');
+    return;
+  }
+
+  const originalButtonText = calculateButton.textContent;
+  calculateButton.disabled = true;
+  calculateButton.textContent = 'Calculando e salvando…';
+
   try {
-    currentCalculation = calculate(collectFormData());
+    const data = collectFormData();
+    currentCalculation = calculate(data);
     renderResult(currentCalculation);
+    await saveDraft(data);
+    await saveCalculationAutomatically(currentCalculation);
   } catch (error) {
     showFormError(error.message || 'Revise os valores informados.');
+  } finally {
+    calculateButton.disabled = false;
+    calculateButton.textContent = originalButtonText;
   }
 });
 
@@ -440,11 +601,20 @@ form.addEventListener('change', scheduleDraftSave);
 compostagem.addEventListener('input', () => {
   compostagemOutput.value = `${formatNumber(compostagem.value, 0)} kg`;
 });
-addProductButton.addEventListener('click', () => { addProduct(); scheduleDraftSave(); });
-saveButton.addEventListener('click', saveCurrentCalculation);
+addProductButton.addEventListener('click', () => {
+  addProduct();
+  scheduleDraftSave();
+});
 clearButton.addEventListener('click', resetForm);
-syncButton.addEventListener('click', () => flushQueue(true));
-window.addEventListener('online', async () => { await updateConnectionStatus(); await flushQueue(); });
+syncButton.addEventListener('click', async () => {
+  await refreshBackendHealth();
+  await flushQueue(true);
+});
+window.addEventListener('online', async () => {
+  await refreshBackendHealth();
+  await updateConnectionStatus();
+  await flushQueue();
+});
 window.addEventListener('offline', updateConnectionStatus);
 
 window.addEventListener('beforeinstallprompt', (event) => {
@@ -467,5 +637,6 @@ if ('serviceWorker' in navigator) {
 }
 
 await restoreDraft();
+await refreshBackendHealth();
 await updateConnectionStatus();
 if (navigator.onLine) await flushQueue();

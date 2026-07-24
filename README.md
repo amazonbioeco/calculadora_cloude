@@ -1,41 +1,50 @@
-# Calculadora de Carbono AmazonBioEco
+# Calculadora de Carbono AmazonBioEco — versão 1.2.0
 
-Projeto completo para:
+Projeto completo para hospedar a calculadora no **Google Cloud Run**, salvar automaticamente no **Google Sheets** por meio do **Google Apps Script**, enviar o resultado por e-mail e manter uma fila offline no navegador.
 
-- hospedar a aplicação no **Google Cloud Run**;
-- fazer implantação contínua a partir do **GitHub**;
-- salvar os resultados em uma **Planilha Google** por meio do **Google Apps Script**;
-- funcionar como **PWA**, inclusive com rascunho e fila offline;
-- reutilizar o **Firebase App e Firebase Analytics** já configurados.
+## Alterações desta versão
 
-> A aplicação é uma estimativa educativa. Ela não substitui inventário de emissões, auditoria ambiental ou certificação de créditos de carbono.
+- nome e e-mail obrigatórios;
+- opção **Enviar uma cópia do resultado para o e-mail informado**;
+- salvamento automático no dispositivo e no Google Sheets após cada cálculo;
+- envio do e-mail pelo Google Apps Script;
+- retentativa automática caso a internet ou o envio do e-mail falhe;
+- preparação automática da aba `Cálculos de Carbono`;
+- migração automática dos cabeçalhos da versão anterior;
+- diagnóstico mais claro para URL incorreta, implantação privada, falta de vínculo com a planilha ou variável ausente no Cloud Run;
+- Firebase App e Firebase Analytics preservados;
+- PWA e funcionamento offline preservados.
+
+> A calculadora apresenta uma estimativa educativa. Não substitui inventário de emissões, auditoria ambiental ou certificação de créditos de carbono.
 
 ---
 
-## 1. Arquitetura final
+# 1. Arquitetura
 
 ```text
-Usuário / navegador
-        │
-        │ HTTPS
-        ▼
+Navegador / PWA
+      │
+      │ HTTPS
+      ▼
 Google Cloud Run
-  ├─ entrega HTML, CSS, JavaScript e PWA
-  ├─ recebe POST em /api/calculations
-  └─ encaminha a solicitação ao Apps Script
-        │
-        ▼
+  ├─ hospeda a aplicação
+  ├─ recebe POST /api/calculations
+  └─ encaminha os dados ao Apps Script
+      │
+      ▼
 Google Apps Script Web App
-        │
-        ▼
-Google Sheets — aba "Cálculos de Carbono"
+  ├─ prepara a aba automaticamente
+  ├─ recalcula e valida os resultados
+  ├─ grava no Google Sheets
+  └─ envia o resultado por e-mail
+      │
+      ▼
+Planilha Google
 ```
-
-O navegador não chama diretamente o Apps Script. O Cloud Run atua como proxy de mesma origem, evitando problemas de CORS e mantendo a URL do Apps Script fora do código público do frontend.
 
 ---
 
-## 2. Estrutura do projeto
+# 2. Estrutura
 
 ```text
 AmazonBioEco_Calculadora_GoogleSheets_CloudRun/
@@ -64,455 +73,377 @@ AmazonBioEco_Calculadora_GoogleSheets_CloudRun/
 
 ---
 
-# PARTE A — CONFIGURAR O GOOGLE SHEETS
+# PARTE A — GOOGLE SHEETS E APPS SCRIPT
 
-## 3. Criar a Planilha Google
+## 3. Criar ou abrir a Planilha Google
 
-1. Acesse o Google Drive.
-2. Crie uma nova **Planilha Google**.
-3. Dê um nome, por exemplo:
-
-```text
-Base de Dados — Calculadora de Carbono AmazonBioEco
-```
-
-4. Com a planilha aberta, acesse:
+1. Abra a Planilha Google que receberá os cálculos.
+2. Acesse:
 
 ```text
 Extensões → Apps Script
 ```
 
-O Google recomenda esse caminho para criar um script vinculado à Planilha Google.
+É importante criar o Apps Script por esse menu para que ele fique vinculado à planilha.
 
-Referência oficial:
-https://developers.google.com/apps-script/guides/sheets
+## 4. Atualizar o Code.gs
 
----
-
-## 4. Inserir o Code.gs
-
-1. No editor do Apps Script, abra o arquivo `Code.gs`.
-2. Apague o conteúdo existente.
-3. Abra neste projeto:
+1. No editor do Apps Script, abra `Code.gs`.
+2. Apague o código antigo.
+3. Copie integralmente:
 
 ```text
 google-apps-script/Code.gs
 ```
 
-4. Copie todo o conteúdo.
-5. Cole no `Code.gs` do Apps Script.
-6. Salve o projeto.
+4. Cole no editor.
+5. Salve.
 
-### Manifesto opcional
+## 5. Atualizar o appsscript.json
 
-O projeto também contém:
+O novo manifesto concede acesso à planilha e permissão para enviar e-mails.
+
+1. No Apps Script, abra **Configurações do projeto**.
+2. Ative **Mostrar o arquivo de manifesto appsscript.json no editor**.
+3. Abra `appsscript.json`.
+4. Substitua pelo conteúdo de:
 
 ```text
 google-apps-script/appsscript.json
 ```
 
-Para utilizá-lo:
-
-1. Abra **Configurações do projeto** no Apps Script.
-2. Ative a opção para mostrar o arquivo de manifesto `appsscript.json`.
-3. Abra o arquivo exibido.
-4. Substitua o conteúdo pelo manifesto fornecido.
 5. Salve.
 
-O manifesto define, entre outros parâmetros, o fuso horário da aplicação.
+As permissões usadas são:
 
----
+```text
+Google Sheets
+Envio de e-mail pelo Apps Script
+```
 
-## 5. Preparar automaticamente a planilha
+## 6. Preparar a planilha
 
-No seletor de funções do Apps Script, escolha:
+A versão 1.2.0 prepara a planilha automaticamente no primeiro teste ou cálculo. Mesmo assim, recomenda-se executar a preparação uma vez para validar as permissões.
+
+### Opção A — pelo editor
+
+Selecione a função:
 
 ```javascript
 prepararPlanilha
 ```
 
-Clique em **Executar**.
+Clique em **Executar**, revise as permissões e autorize.
 
-Na primeira execução, o Google solicitará autorização:
+### Opção B — pela URL do Web App
 
-1. Clique em **Revisar permissões**.
-2. Selecione sua Conta Google.
-3. Autorize o acesso à planilha.
-
-A função realizará automaticamente:
-
-- gravação do ID da planilha nas propriedades do script;
-- criação da aba `Cálculos de Carbono`;
-- criação dos cabeçalhos;
-- formatação das colunas;
-- congelamento da primeira linha;
-- aplicação de filtro;
-- definição dos formatos numéricos e de data.
-
-A execução deve retornar uma mensagem semelhante a:
+Depois de publicar o Apps Script, abra:
 
 ```text
-Planilha preparada: Cálculos de Carbono | ID configurado: ...
+URL_DO_APPS_SCRIPT/exec?action=setup
 ```
 
-Não pule esta etapa. Quando o Apps Script é executado como Web App, não se deve depender da planilha ativa; por isso, o código armazena o `SPREADSHEET_ID` ao executar `prepararPlanilha()`.
-
----
-
-## 6. Publicar o Apps Script como aplicativo da Web
-
-No editor do Apps Script:
-
-1. Clique em **Implantar**.
-2. Clique em **Nova implantação**.
-3. Em **Selecionar tipo**, escolha **Aplicativo da Web**.
-4. Em descrição, informe, por exemplo:
-
-```text
-API da Calculadora de Carbono AmazonBioEco
-```
-
-5. Em **Executar como**, selecione:
-
-```text
-Eu
-```
-
-6. Em **Quem pode acessar**, selecione a opção pública disponível para sua conta, normalmente:
-
-```text
-Qualquer pessoa
-```
-
-7. Clique em **Implantar**.
-8. Autorize novamente, caso seja solicitado.
-9. Copie a URL terminada em `/exec`.
-
-Exemplo de formato:
-
-```text
-https://script.google.com/macros/s/IDENTIFICADOR_DA_IMPLANTACAO/exec
-```
-
-Referência oficial:
-https://developers.google.com/apps-script/guides/web
-
-### Testar o Apps Script
-
-Abra no navegador a URL copiada. Como a ação padrão é `health`, deverá aparecer uma resposta JSON semelhante a:
+O retorno esperado é semelhante a:
 
 ```json
 {
   "success": true,
-  "service": "AmazonBioEco Carbon Calculator API",
-  "modelVersion": "1.1.0"
+  "setupCompleted": true,
+  "message": "Planilha preparada: Cálculos de Carbono | ID configurado: ..."
 }
 ```
 
-Guarde essa URL. Ela será usada como variável de ambiente no Cloud Run.
+### Inicialização automática
+
+Mesmo que `prepararPlanilha()` não tenha sido executada, o primeiro cálculo recebido:
+
+- localiza a planilha vinculada;
+- armazena seu ID nas propriedades do script;
+- cria a aba `Cálculos de Carbono`;
+- cria ou migra os cabeçalhos;
+- aplica formatação e filtros.
+
+Se o projeto do Apps Script não estiver vinculado a uma planilha, informe o ID em:
+
+```javascript
+SPREADSHEET_ID: ''
+```
+
+no início de `Code.gs`.
+
+O ID é o trecho entre `/d/` e `/edit` na URL da planilha.
+
+## 7. Implantar uma nova versão do Apps Script
+
+Alterar o código não atualiza automaticamente a implantação já publicada.
+
+1. Clique em **Implantar**.
+2. Abra **Gerenciar implantações**.
+3. Selecione a implantação existente e clique em **Editar**.
+4. Em versão, selecione **Nova versão**.
+5. Confirme:
+
+```text
+Executar como: Eu
+Quem pode acessar: Qualquer pessoa
+```
+
+6. Clique em **Implantar**.
+7. Autorize as novas permissões de envio de e-mail.
+8. Copie a URL terminada em `/exec`.
+
+Não use a URL terminada em `/dev`.
+
+## 8. Testar o Apps Script
+
+Abra:
+
+```text
+URL_DO_APPS_SCRIPT/exec?action=health
+```
+
+O retorno correto deve conter:
+
+```json
+{
+  "success": true,
+  "spreadsheetReady": true,
+  "sheetName": "Cálculos de Carbono",
+  "modelVersion": "1.2.0"
+}
+```
+
+Se `spreadsheetReady` for `false`, leia o campo `message`; ele indicará se falta o vínculo ou o ID da planilha.
 
 ---
 
-# PARTE B — ENVIAR O PROJETO AO GITHUB
+# PARTE B — GITHUB
 
-## 7. Criar o repositório
+## 9. Enviar a versão atualizada
 
-1. Entre no GitHub.
-2. Crie um novo repositório.
-3. Use um nome como:
+Envie **todo o conteúdo da pasta do projeto** para a raiz do repositório GitHub.
 
-```text
-amazonbioeco-calculadora-carbono
+```bash
+git add .
+git commit -m "Atualiza calculadora para salvamento automático e envio por email"
+git push origin main
 ```
 
-4. Envie **todo o conteúdo desta pasta** para a raiz do repositório.
-
-O repositório deve mostrar o `Dockerfile` diretamente na raiz:
+O `Dockerfile` deve permanecer na raiz:
 
 ```text
 /Dockerfile
 ```
 
-Não envie somente a pasta `public`.
-
-### Usando Git no terminal
-
-Dentro da pasta do projeto:
-
-```bash
-git init
-git add .
-git commit -m "Projeto inicial da calculadora AmazonBioEco"
-git branch -M main
-git remote add origin URL_DO_SEU_REPOSITORIO
-git push -u origin main
-```
-
-Também é possível enviar os arquivos pela interface Web do GitHub.
-
 ---
 
-# PARTE C — IMPLANTAR NO GOOGLE CLOUD RUN
+# PARTE C — GOOGLE CLOUD RUN
 
-## 8. Criar ou selecionar o projeto Google Cloud
+## 10. Conferir a integração contínua
 
-1. Acesse o Console do Google Cloud.
-2. Crie ou selecione um projeto.
-3. Confirme que o faturamento está habilitado para o projeto, quando exigido.
-4. Abra o serviço **Cloud Run**.
-
-A implantação contínua do Cloud Run aceita repositórios com um `Dockerfile` e utiliza o Cloud Build para criar e implantar novas revisões.
-
-Referências oficiais:
-
-- https://docs.cloud.google.com/run/docs/continuous-deployment
-- https://docs.cloud.google.com/run/docs/container-contract
-
----
-
-## 9. Criar o serviço com implantação contínua do GitHub
-
-No Cloud Run:
-
-1. Clique em **Criar serviço**.
-2. Escolha a opção equivalente a:
-
-```text
-Implantar continuamente novas revisões de um repositório de origem
-```
-
-3. Clique em **Configurar com Cloud Build**.
-4. Conecte sua conta do GitHub, caso ainda não esteja conectada.
-5. Autorize o aplicativo do Google Cloud no GitHub.
-6. Selecione o repositório criado.
-7. Selecione a ramificação:
-
-```text
-main
-```
-
-8. Na configuração de build, escolha:
+No Cloud Run, a configuração do repositório deve usar:
 
 ```text
 Tipo de build: Dockerfile
-```
-
-9. Informe:
-
-```text
 Local do Dockerfile: /Dockerfile
 Diretório de contexto: /
+Ramificação: main
+Porta: 8080
+Acesso: permitir invocações não autenticadas
 ```
 
-Em algumas telas, o campo pode aparecer sem a barra inicial. Nesse caso, use:
+O push para `main` deve iniciar um novo build e criar uma nova revisão.
 
-```text
-Dockerfile
-```
+## 11. Configurar APPS_SCRIPT_ENDPOINT
 
-O arquivo deve continuar localizado na raiz do repositório.
+No serviço do Cloud Run:
 
----
-
-## 10. Configurar o serviço do Cloud Run
-
-Utilize uma configuração semelhante a esta:
-
-```text
-Nome do serviço: amazonbioeco-calculadora-carbono
-Região: escolha uma região adequada ao público do projeto
-Porta do contêiner: 8080
-Autenticação: permitir acesso público/não autenticado
-```
-
-O servidor já está configurado para escutar em `0.0.0.0` e usar automaticamente a variável `PORT` fornecida pelo Cloud Run. O padrão do serviço é a porta 8080.
-
-Referência oficial:
-https://docs.cloud.google.com/run/docs/container-contract
-
-### Acesso público
-
-Como a calculadora será divulgada ao público, selecione a opção equivalente a:
-
-```text
-Permitir invocações não autenticadas
-```
-
-Sem essa permissão, os visitantes receberão uma tela de autenticação ou erro de acesso.
-
----
-
-## 11. Configurar a variável do Google Sheets
-
-Antes de criar o serviço, abra a seção de configurações do contêiner, normalmente apresentada como:
-
-```text
-Contêineres, volumes, rede e segurança
-```
-
-Localize **Variáveis e secrets** ou **Variáveis de ambiente**.
-
-Crie a seguinte variável:
+1. Clique em **Editar e implantar nova revisão**.
+2. Abra **Variáveis e secrets**.
+3. Crie ou atualize:
 
 ```text
 Nome: APPS_SCRIPT_ENDPOINT
-Valor: URL_DO_APPS_SCRIPT_TERMINADA_EM_EXEC
+Valor: https://script.google.com/macros/s/IDENTIFICADOR/exec
 ```
 
-Exemplo:
+Regras importantes:
+
+- use a URL `/exec` da implantação atual;
+- não coloque aspas;
+- não acrescente espaços;
+- a implantação precisa permitir acesso a **Qualquer pessoa**.
+
+4. Clique em **Implantar**.
+
+## 12. Testar o Cloud Run
+
+### Saúde do contêiner
+
+Abra:
 
 ```text
-APPS_SCRIPT_ENDPOINT=https://script.google.com/macros/s/IDENTIFICADOR/exec
+URL_DO_CLOUD_RUN/healthz
 ```
 
-Não coloque aspas no valor.
-
-Essa variável é lida somente pelo servidor do Cloud Run. O endereço do Apps Script não precisa ser inserido no HTML ou no JavaScript público.
-
----
-
-## 12. Implantar
-
-1. Revise as configurações.
-2. Clique em **Criar** ou **Implantar**.
-3. Aguarde o Cloud Build criar a imagem a partir do `Dockerfile`.
-4. Aguarde o Cloud Run publicar a primeira revisão.
-5. Ao concluir, copie a URL do serviço.
-
-O endereço terá formato semelhante a:
-
-```text
-https://amazonbioeco-calculadora-carbono-IDENTIFICADOR.REGIAO.run.app
-```
-
-Esse é o endereço principal que deverá ser divulgado.
-
----
-
-# PARTE D — TESTAR A INSTALAÇÃO
-
-## 13. Testar a saúde do Cloud Run
-
-Acrescente `/healthz` à URL do Cloud Run:
-
-```text
-https://SEU_SERVICO.run.app/healthz
-```
-
-A resposta esperada é semelhante a:
+Deve retornar:
 
 ```json
 {
   "status": "ok",
-  "service": "calculadora-carbono-amazonbioeco",
   "googleSheetsBackendConfigured": true
 }
 ```
 
-Se `googleSheetsBackendConfigured` aparecer como `false`, a variável `APPS_SCRIPT_ENDPOINT` não foi configurada corretamente.
+### Diagnóstico da planilha
 
----
-
-## 14. Testar a gravação na planilha
-
-1. Abra a URL principal do Cloud Run.
-2. Preencha ao menos um valor de reciclagem, compostagem ou agricultura.
-3. Clique em **Calcular impacto**.
-4. Confira o resultado.
-5. Clique em **Salvar resultado na planilha**.
-6. Abra a Planilha Google.
-7. Confira a nova linha na aba:
+Abra:
 
 ```text
-Cálculos de Carbono
+URL_DO_CLOUD_RUN/api/backend-health
 ```
 
-O Apps Script recalcula os resultados no servidor. Os valores calculados pelo navegador não são aceitos automaticamente como fonte final.
+Deve retornar `success: true` e `spreadsheetReady: true`.
 
----
-
-## 15. Testar o funcionamento offline
-
-1. Abra a aplicação com internet pelo menos uma vez.
-2. Aguarde o carregamento completo.
-3. Desative a conexão do dispositivo ou use o modo offline das ferramentas do navegador.
-4. Atualize a página.
-5. Confirme que a interface continua disponível.
-6. Faça um cálculo.
-7. Clique para salvar.
-8. Confirme a mensagem de que o resultado ficou armazenado no dispositivo.
-9. Feche e reabra a aplicação.
-10. Restabeleça a internet.
-11. A aplicação tentará sincronizar automaticamente.
-12. Também é possível usar o botão **Sincronizar agora**.
-
-A fila offline é armazenada no IndexedDB do navegador e utiliza um UUID para impedir registros duplicados.
-
----
-
-# PARTE E — FIREBASE
-
-## 16. Firebase já incluído
-
-O projeto reutiliza a configuração informada anteriormente para:
-
-- Firebase App;
-- Firebase Analytics.
-
-Os arquivos envolvidos são:
+Essa rota verifica toda a cadeia:
 
 ```text
-public/firebase.js
-public/config.js
+Cloud Run → Apps Script → Google Sheets
 ```
 
-Para esta implantação, o **Firebase Hosting não é necessário**, porque a aplicação será hospedada no Cloud Run.
+## 13. Testar um cálculo
 
-O Firebase é usado somente para Analytics. A gravação dos cálculos ocorre no Google Sheets por Apps Script.
-
-A configuração pública do SDK do Firebase não é uma senha administrativa. Mesmo assim, nenhuma credencial privada, chave de conta de serviço ou token deve ser adicionada ao repositório.
+1. Abra a URL pública do Cloud Run.
+2. Atualize forçadamente com `Ctrl + Shift + R`.
+3. Informe nome e e-mail.
+4. Mantenha marcada ou desmarque a opção de envio por e-mail.
+5. Informe ao menos um valor ambiental.
+6. Clique em **Calcular e salvar automaticamente**.
+7. Confirme:
+   - resultado exibido;
+   - mensagem de gravação automática;
+   - nova linha na aba `Cálculos de Carbono`;
+   - e-mail recebido, quando solicitado.
 
 ---
 
-# PARTE F — ATUALIZAÇÕES AUTOMÁTICAS
+# 14. Funcionamento offline
 
-## 17. Publicar futuras alterações
+Ao calcular sem internet:
 
-Depois que a implantação contínua estiver configurada, toda alteração enviada à ramificação `main` poderá gerar automaticamente:
+1. o resultado é calculado normalmente;
+2. a operação é gravada em IndexedDB;
+3. a interface informa que o registro está pendente;
+4. ao retornar a conexão, a sincronização é iniciada automaticamente;
+5. o registro é removido da fila somente depois da confirmação do Apps Script;
+6. se a planilha foi salva, mas o e-mail falhou, a operação permanece na fila para nova tentativa de envio.
 
-1. um novo build no Cloud Build;
-2. uma nova imagem de contêiner;
-3. uma nova revisão do Cloud Run;
-4. a atualização do serviço público.
+O UUID da operação impede a criação de linhas duplicadas.
 
-Fluxo normal:
+---
+
+# 15. Colunas da planilha
+
+A aba utiliza 28 colunas:
+
+1. Data e hora;
+2. ID da operação;
+3. Versão do modelo;
+4. Nome;
+5. E-mail;
+6. Enviar resultado por e-mail;
+7. Estado;
+8. Município;
+9. Papel;
+10. Plástico;
+11. Vidro;
+12. Metal;
+13. Compostagem;
+14. Produtos agrícolas;
+15. Práticas sustentáveis;
+16. Reciclagem anual;
+17. Compostagem anual;
+18. Agricultura anual;
+19. Redução total;
+20. Percentual regional;
+21. Árvores equivalentes;
+22. Carros equivalentes;
+23. Residências equivalentes;
+24. Origem;
+25. Navegador;
+26. Status da planilha;
+27. Status do e-mail;
+28. Data do envio do e-mail.
+
+Caso a aba ainda possua os cabeçalhos da versão anterior, o script migra os dados existentes pelo nome de cada coluna.
+
+---
+
+# 16. Diagnóstico de erros
+
+## “A variável APPS_SCRIPT_ENDPOINT não está configurada”
+
+Adicione a variável no Cloud Run e implante uma nova revisão.
+
+## “O Apps Script retornou uma página HTML em vez de JSON”
+
+Normalmente significa:
+
+- URL `/dev` em vez de `/exec`;
+- implantação exige login;
+- acesso não está definido como **Qualquer pessoa**;
+- URL de implantação antiga ou removida.
+
+## “Planilha não vinculada”
+
+Crie o Apps Script por:
+
+```text
+Planilha Google → Extensões → Apps Script
+```
+
+ou informe o ID em `CONFIG.SPREADSHEET_ID` no `Code.gs`.
+
+## “Cálculo salvo, mas o e-mail não foi enviado”
+
+Verifique:
+
+- autorização do escopo de envio de e-mail;
+- cota diária do Apps Script;
+- endereço informado;
+- spam ou lixo eletrônico.
+
+O cálculo permanece salvo na planilha. A fila tentará novamente o envio do e-mail.
+
+## A página ainda mostra o botão ou texto antigo
+
+O Service Worker pode estar utilizando cache anterior.
+
+1. Faça `Ctrl + Shift + R`.
+2. Caso permaneça, abra as ferramentas do navegador.
+3. Em **Application → Service Workers**, remova o registro.
+4. Limpe os dados do site e reabra a aplicação.
+
+---
+
+# 17. Teste local
 
 ```bash
-git add .
-git commit -m "Descrição da atualização"
-git push origin main
+npm start
 ```
 
-Acompanhe o resultado em:
+Sem a variável do Apps Script, a interface abrirá, mas o diagnóstico mostrará que o backend não está configurado.
 
-```text
-Google Cloud Console → Cloud Build → Histórico
-Google Cloud Console → Cloud Run → Revisões
-```
-
-Se alterar o `service-worker.js`, também atualize a constante `CACHE_VERSION` para que os dispositivos recebam os arquivos novos.
-
----
-
-# PARTE G — TESTE LOCAL OPCIONAL
-
-## 18. Executar com Node.js
-
-É necessário Node.js 20 ou superior.
-
-Na raiz do projeto:
+Para testar com uma URL real:
 
 ```bash
+APPS_SCRIPT_ENDPOINT="https://script.google.com/macros/s/IDENTIFICADOR/exec" npm start
+```
+
+No Windows PowerShell:
+
+```powershell
+$env:APPS_SCRIPT_ENDPOINT="https://script.google.com/macros/s/IDENTIFICADOR/exec"
 npm start
 ```
 
@@ -521,170 +452,3 @@ Abra:
 ```text
 http://localhost:8080
 ```
-
-Sem a variável `APPS_SCRIPT_ENDPOINT`, a calculadora funcionará, mas o envio ficará na fila local.
-
-Para testar a integração localmente em Linux ou macOS:
-
-```bash
-APPS_SCRIPT_ENDPOINT="https://script.google.com/macros/s/IDENTIFICADOR/exec" npm start
-```
-
-No PowerShell:
-
-```powershell
-$env:APPS_SCRIPT_ENDPOINT="https://script.google.com/macros/s/IDENTIFICADOR/exec"
-npm start
-```
-
----
-
-## 19. Testar com Docker
-
-Construir a imagem:
-
-```bash
-docker build -t amazonbioeco-calculadora-carbono .
-```
-
-Executar:
-
-```bash
-docker run --rm \
-  -p 8080:8080 \
-  -e PORT=8080 \
-  -e APPS_SCRIPT_ENDPOINT="https://script.google.com/macros/s/IDENTIFICADOR/exec" \
-  amazonbioeco-calculadora-carbono
-```
-
-No Windows PowerShell, o comando pode ser colocado em uma única linha.
-
----
-
-# PARTE H — SOLUÇÃO DE PROBLEMAS
-
-## 20. Cloud Run mostra erro ao iniciar
-
-Verifique:
-
-- se o `Dockerfile` está na raiz;
-- se `server.mjs` existe na raiz;
-- se a pasta `public` foi enviada ao GitHub;
-- se o build selecionou `/Dockerfile`;
-- se a aplicação está usando a porta 8080.
-
-Consulte os logs em:
-
-```text
-Cloud Run → Serviço → Logs
-```
-
----
-
-## 21. A página abre, mas não salva na planilha
-
-Confira:
-
-1. se a URL do Apps Script termina em `/exec`;
-2. se `APPS_SCRIPT_ENDPOINT` foi criada no Cloud Run;
-3. se o Apps Script foi implantado como Web App;
-4. se o acesso público foi permitido;
-5. se `prepararPlanilha()` foi executada;
-6. se a Conta Google proprietária do script possui acesso à planilha;
-7. se `/healthz` mostra `googleSheetsBackendConfigured: true`;
-8. os logs do Cloud Run;
-9. as execuções no painel do Apps Script.
-
----
-
-## 22. Alterei o Apps Script, mas nada mudou
-
-Sempre que alterar `Code.gs`:
-
-1. salve o projeto;
-2. abra **Implantar → Gerenciar implantações**;
-3. edite a implantação ativa;
-4. selecione **Nova versão**;
-5. implante novamente.
-
-A URL `/exec` normalmente permanece a mesma quando a implantação existente é atualizada.
-
----
-
-## 23. Há registros duplicados
-
-A aplicação usa um UUID por operação e o Apps Script procura esse UUID antes de gravar. Não remova a coluna **ID da operação** nem altere manualmente os identificadores.
-
----
-
-## 24. A PWA continua exibindo uma versão antiga
-
-1. envie a versão nova ao GitHub;
-2. confirme que o Cloud Build terminou com sucesso;
-3. incremente `CACHE_VERSION` em `public/service-worker.js`;
-4. feche e reabra a aplicação;
-5. em último caso, limpe os dados do site ou desinstale e reinstale a PWA.
-
----
-
-# PARTE I — SEGURANÇA E LIMITAÇÕES
-
-## 25. Medidas implementadas
-
-- servidor executado como usuário não administrativo no contêiner;
-- validação de tipos e limites no frontend;
-- validação e recálculo no Apps Script;
-- sanitização de textos;
-- limite de tamanho das requisições no Cloud Run;
-- bloqueio concorrente no Apps Script;
-- idempotência por UUID;
-- fila offline persistente;
-- endpoint do Apps Script armazenado em variável do Cloud Run;
-- nenhum token privado no frontend;
-- cabeçalhos HTTP de segurança;
-- rota de saúde `/healthz`.
-
-## 26. Limitações
-
-- Apps Script e Google Sheets possuem cotas de uso;
-- uma aplicação pública pode receber tráfego automatizado;
-- a calculadora fornece estimativas educativas;
-- Firebase Analytics depende de conexão e das configurações de privacidade do navegador;
-- dados offline permanecem no dispositivo até serem sincronizados ou apagados pelo usuário/navegador;
-- o acesso público ao Apps Script pode depender das políticas da organização Google Workspace.
-
----
-
-# CHECKLIST FINAL
-
-Use esta lista antes de divulgar:
-
-- [ ] Planilha Google criada.
-- [ ] `Code.gs` copiado.
-- [ ] `prepararPlanilha()` executada e autorizada.
-- [ ] Apps Script implantado como Web App.
-- [ ] URL `/exec` testada.
-- [ ] Projeto completo enviado ao GitHub.
-- [ ] `Dockerfile` visível na raiz do repositório.
-- [ ] Repositório conectado ao Cloud Run.
-- [ ] Build configurado como Dockerfile.
-- [ ] Caminho `/Dockerfile` e contexto `/` definidos.
-- [ ] Serviço configurado para acesso público.
-- [ ] Porta 8080 configurada.
-- [ ] Variável `APPS_SCRIPT_ENDPOINT` definida.
-- [ ] `/healthz` retorna status `ok` e backend configurado.
-- [ ] Cálculo salvo na planilha.
-- [ ] Funcionamento offline testado.
-- [ ] URL do Cloud Run divulgada.
-
----
-
-## Endereço para divulgação
-
-Divulgue a URL HTTPS gerada pelo Cloud Run:
-
-```text
-https://SEU_SERVICO.REGIAO.run.app
-```
-
-Essa passa a ser a URL oficial da Calculadora de Carbono AmazonBioEco.

@@ -1,8 +1,9 @@
 export const APP_CONFIG = Object.freeze({
   appName: 'Calculadora de Carbono AmazonBioEco',
-  modelVersion: '1.1.0',
+  modelVersion: '1.2.0',
   apiEndpoint: '/api/calculations',
   healthEndpoint: '/healthz',
+  backendHealthEndpoint: '/api/backend-health',
   appUrl: globalThis.location?.origin || '',
   databaseName: 'amazonbioeco-carbono',
   queueStore: 'syncQueue',

@@ -1,6 +1,6 @@
 {
   "name": "amazonbioeco-calculadora-carbono-cloud-run",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "private": true,
   "type": "module",
   "description": "PWA AmazonBioEco integrada ao Google Sheets por Apps Script e hospedada no Cloud Run.",

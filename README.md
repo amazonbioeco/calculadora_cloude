@@ -452,3 +452,22 @@ Abra:
 ```text
 http://localhost:8080
 ```
+
+
+---
+
+# 18. Incorporar no Google Sites
+
+O servidor está configurado para permitir incorporação por `https://sites.google.com` usando a diretiva HTTP `Content-Security-Policy: frame-ancestors`.
+
+Consulte o passo a passo em:
+
+```text
+GOOGLE_SITES.md
+```
+
+Para um Google Sites publicado em domínio próprio, configure no Cloud Run:
+
+```text
+ALLOWED_FRAME_ANCESTORS=https://www.seudominio.org.br
+```

@@ -13,6 +13,37 @@ const HOST = '0.0.0.0';
 const APPS_SCRIPT_ENDPOINT = String(process.env.APPS_SCRIPT_ENDPOINT || '').trim();
 const MAX_REQUEST_BYTES = 1024 * 1024;
 
+const DEFAULT_FRAME_ANCESTORS = Object.freeze([
+  "'self'",
+  'https://sites.google.com'
+]);
+
+function getAllowedFrameAncestors() {
+  const configuredOrigins = String(process.env.ALLOWED_FRAME_ANCESTORS || '')
+    .split(/[\s,]+/)
+    .map((value) => value.trim())
+    .filter(Boolean);
+
+  const allowed = new Set(DEFAULT_FRAME_ANCESTORS);
+
+  for (const value of configuredOrigins) {
+    try {
+      const origin = new URL(value);
+      if (origin.protocol === 'https:' && origin.pathname === '/' && !origin.search && !origin.hash) {
+        allowed.add(origin.origin);
+      } else {
+        console.warn(`Origem ignorada em ALLOWED_FRAME_ANCESTORS: ${value}`);
+      }
+    } catch {
+      console.warn(`Origem inválida ignorada em ALLOWED_FRAME_ANCESTORS: ${value}`);
+    }
+  }
+
+  return [...allowed];
+}
+
+const ALLOWED_FRAME_ANCESTORS = Object.freeze(getAllowedFrameAncestors());
+
 const MIME_TYPES = Object.freeze({
   '.html': 'text/html; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
@@ -55,10 +86,20 @@ function isAllowedAppsScriptEndpoint(endpoint) {
 
 function applySecurityHeaders(response) {
   response.setHeader('X-Content-Type-Options', 'nosniff');
-  response.setHeader('X-Frame-Options', 'SAMEORIGIN');
   response.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
   response.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
   response.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
+}
+
+function applyHtmlEmbeddingHeaders(response) {
+  // X-Frame-Options não permite uma lista moderna de origens. A política CSP
+  // abaixo libera somente o próprio serviço e o Google Sites.
+  response.removeHeader('X-Frame-Options');
+  response.setHeader(
+    'Content-Security-Policy',
+    `frame-ancestors ${ALLOWED_FRAME_ANCESTORS.join(' ')};`
+  );
+  response.setHeader('Cross-Origin-Resource-Policy', 'cross-origin');
 }
 
 function sendJson(response, statusCode, payload) {
@@ -165,7 +206,7 @@ async function proxyBackendHealth(response) {
     healthUrl.searchParams.set('action', 'health');
     const upstream = await fetch(healthUrl, {
       method: 'GET',
-      headers: { 'User-Agent': 'AmazonBioEco-CloudRun/1.2' },
+      headers: { 'User-Agent': 'AmazonBioEco-CloudRun/1.2.1' },
       redirect: 'follow',
       signal: AbortSignal.timeout(20000)
     });
@@ -238,7 +279,7 @@ async function proxyCalculation(request, response) {
       method: 'POST',
       headers: {
         'Content-Type': 'text/plain;charset=UTF-8',
-        'User-Agent': 'AmazonBioEco-CloudRun/1.2'
+        'User-Agent': 'AmazonBioEco-CloudRun/1.2.1'
       },
       body: JSON.stringify(parsed),
       redirect: 'follow',
@@ -334,6 +375,10 @@ const server = http.createServer(async (request, response) => {
 
   response.setHeader('Content-Type', contentType);
   response.setHeader('Cache-Control', getCacheControl(fileName));
+
+  if (contentType.startsWith('text/html')) {
+    applyHtmlEmbeddingHeaders(response);
+  }
   response.setHeader('ETag', etag);
 
   if (fileName === 'service-worker.js') {

@@ -1,0 +1,14 @@
+{
+  "name": "amazonbioeco-calculadora-carbono-cloud-run",
+  "version": "1.1.0",
+  "private": true,
+  "type": "module",
+  "description": "PWA AmazonBioEco integrada ao Google Sheets por Apps Script e hospedada no Cloud Run.",
+  "scripts": {
+    "start": "node server.mjs",
+    "test:syntax": "node --check server.mjs && node --check public/app.js && node --check public/api.js && node --check public/config.js && node --check public/storage.js && node --check public/firebase.js && node --check public/service-worker.js"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

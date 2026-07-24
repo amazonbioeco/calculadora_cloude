@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#146b3a">
+  <meta name="description" content="Calculadora educativa de redução estimada de emissões de carbono da AmazonBioEco.">
+  <meta name="color-scheme" content="light">
+  <title>Calculadora de Carbono | AmazonBioEco</title>
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="icon" href="./icons/icon-192.png" sizes="192x192">
+  <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png">
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <a class="skip-link" href="#conteudo">Ir para o conteúdo</a>
+
+  <div class="connection-bar" id="connection-bar" role="status" aria-live="polite">
+    <span class="status-dot" aria-hidden="true"></span>
+    <span id="connection-text">Verificando conexão…</span>
+    <button class="link-button" id="sync-button" type="button" hidden>Sincronizar agora</button>
+  </div>
+
+  <header class="hero">
+    <div class="hero__content shell">
+      <div class="brand">
+        <div class="brand__mark" aria-hidden="true">
+          <svg viewBox="0 0 64 64" role="img"><path d="M51 9C31 10 17 20 13 37c-2 9 2 16 9 18 8 2 17-3 22-12 6-10 7-22 7-34Z"/><path class="brand__vein" d="M18 49c8-11 17-20 29-30M27 39c4 0 8 1 12 3M32 32c-1-4-1-8 0-12"/></svg>
+        </div>
+        <div>
+          <p class="brand__eyebrow">AmazonBioEco</p>
+          <h1>Calculadora de redução de carbono</h1>
+        </div>
+      </div>
+      <p class="hero__description">
+        Estime o impacto anual de práticas de reciclagem, compostagem e agricultura familiar sustentável.
+      </p>
+      <div class="hero__actions">
+        <button class="button button--light" id="install-button" type="button" hidden>Instalar aplicativo</button>
+        <a class="button button--ghost" href="#referencias">Consultar metodologia</a>
+      </div>
+    </div>
+  </header>
+
+  <main id="conteudo" class="shell main-layout">
+    <section class="panel form-panel" aria-labelledby="titulo-dados">
+      <div class="panel__header">
+        <div>
+          <p class="kicker">Etapa 1</p>
+          <h2 id="titulo-dados">Informe suas práticas</h2>
+          <p>Use valores médios mensais. Nenhum campo pessoal é obrigatório.</p>
+        </div>
+        <button class="icon-button" id="clear-button" type="button" title="Limpar formulário" aria-label="Limpar formulário">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3m-8 0 1 13h8l1-13M10 11v5m4-5v5"/></svg>
+        </button>
+      </div>
+
+      <form id="carbon-form" novalidate>
+        <fieldset>
+          <legend>Localização</legend>
+          <div class="field-grid field-grid--two">
+            <label class="field">
+              <span>Estado de referência</span>
+              <select id="estado" name="estado" required>
+                <option value="RR">Roraima</option>
+                <option value="AM">Amazonas</option>
+                <option value="SP">São Paulo</option>
+                <option value="MG">Minas Gerais</option>
+                <option value="BR">Brasil / outro estado</option>
+              </select>
+            </label>
+            <label class="field">
+              <span>Município <small>(opcional)</small></span>
+              <input id="municipio" name="municipio" type="text" maxlength="120" autocomplete="address-level2" placeholder="Ex.: Boa Vista">
+            </label>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Reciclagem mensal</legend>
+          <p class="fieldset-help">Informe a quantidade aproximada encaminhada para reciclagem.</p>
+          <div class="field-grid field-grid--two">
+            <label class="field">
+              <span>Papel <small>kg/mês</small></span>
+              <input id="papel" name="papel" type="number" min="0" max="100000" step="0.1" inputmode="decimal" placeholder="0,0">
+            </label>
+            <label class="field">
+              <span>Plástico <small>kg/mês</small></span>
+              <input id="plastico" name="plastico" type="number" min="0" max="100000" step="0.1" inputmode="decimal" placeholder="0,0">
+            </label>
+            <label class="field">
+              <span>Vidro <small>kg/mês</small></span>
+              <input id="vidro" name="vidro" type="number" min="0" max="100000" step="0.1" inputmode="decimal" placeholder="0,0">
+            </label>
+            <label class="field">
+              <span>Metal <small>kg/mês</small></span>
+              <input id="metal" name="metal" type="number" min="0" max="100000" step="0.1" inputmode="decimal" placeholder="0,0">
+            </label>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <legend>Compostagem mensal</legend>
+          <div class="range-row">
+            <label class="field field--grow" for="compostagem">
+              <span>Resíduos orgânicos compostados</span>
+              <input id="compostagem" name="compostagem" type="range" min="0" max="500" step="1" value="0">
+            </label>
+            <output class="range-output" id="compostagem-output" for="compostagem">0 kg</output>
+          </div>
+        </fieldset>
+
+        <fieldset>
+          <div class="fieldset-heading">
+            <div>
+              <legend>Agricultura familiar sustentável</legend>
+              <p class="fieldset-help">Adicione uma ou mais áreas produtivas.</p>
+            </div>
+            <button class="button button--small button--secondary" id="add-product-button" type="button">Adicionar produto</button>
+          </div>
+
+          <div id="products-container" class="products" aria-live="polite"></div>
+
+          <label class="field">
+            <span>Práticas sustentáveis adotadas <small>(opcional)</small></span>
+            <textarea id="praticas" name="praticas" rows="3" maxlength="1000" placeholder="Ex.: adubação orgânica, consórcios, biofertilizantes…"></textarea>
+          </label>
+        </fieldset>
+
+        <div id="form-alert" class="alert" role="alert" aria-live="assertive" hidden></div>
+
+        <div class="form-actions">
+          <button class="button button--primary" id="calculate-button" type="submit">
+            Calcular impacto
+          </button>
+          <button class="button button--secondary" id="save-button" type="button" disabled>
+            Salvar resultado na planilha
+          </button>
+        </div>
+        <p class="privacy-note">
+          O resultado só é enviado ao Google Sheets quando você selecionar “Salvar resultado na planilha”.
+        </p>
+      </form>
+    </section>
+
+    <section class="panel result-panel" aria-labelledby="titulo-resultado">
+      <div class="panel__header">
+        <div>
+          <p class="kicker">Etapa 2</p>
+          <h2 id="titulo-resultado">Resultado estimado</h2>
+          <p id="result-status">Preencha os dados para calcular.</p>
+        </div>
+      </div>
+
+      <div id="empty-result" class="empty-state">
+        <div class="empty-state__icon" aria-hidden="true">
+          <svg viewBox="0 0 64 64"><path d="M51 9C31 10 17 20 13 37c-2 9 2 16 9 18 8 2 17-3 22-12 6-10 7-22 7-34Z"/><path d="M18 49c8-11 17-20 29-30"/></svg>
+        </div>
+        <h3>Seu impacto aparecerá aqui</h3>
+        <p>O cálculo é executado no dispositivo e funciona mesmo sem internet.</p>
+      </div>
+
+      <div id="result-content" hidden>
+        <div class="total-card">
+          <p>Redução total estimada</p>
+          <strong id="total-reduction">0 kg CO₂e/ano</strong>
+          <span id="regional-comparison">—</span>
+        </div>
+
+        <div class="chart-layout">
+          <div class="donut" id="carbon-donut" role="img" aria-label="Distribuição da redução estimada">
+            <div class="donut__center">
+              <span>CO₂e</span>
+              <strong id="donut-total">0</strong>
+              <small>kg/ano</small>
+            </div>
+          </div>
+          <div class="legend" id="chart-legend"></div>
+        </div>
+
+        <div class="impact-grid">
+          <article class="impact-card">
+            <span class="impact-card__icon" aria-hidden="true">🌳</span>
+            <strong id="trees-equivalent">0</strong>
+            <span>árvores/ano equivalentes</span>
+          </article>
+          <article class="impact-card">
+            <span class="impact-card__icon" aria-hidden="true">🚗</span>
+            <strong id="cars-equivalent">0</strong>
+            <span>carros/ano equivalentes</span>
+          </article>
+          <article class="impact-card">
+            <span class="impact-card__icon" aria-hidden="true">🏠</span>
+            <strong id="homes-equivalent">0</strong>
+            <span>residências/ano equivalentes</span>
+          </article>
+        </div>
+
+        <div class="breakdown">
+          <h3>Detalhamento</h3>
+          <div id="breakdown-list" class="breakdown-list"></div>
+          <div id="agriculture-details" class="agriculture-details"></div>
+        </div>
+
+        <div id="save-status" class="save-status" role="status" aria-live="polite"></div>
+      </div>
+    </section>
+  </main>
+
+  <section id="referencias" class="references shell" aria-labelledby="titulo-referencias">
+    <div class="references__header">
+      <div>
+        <p class="kicker">Metodologia</p>
+        <h2 id="titulo-referencias">Fatores utilizados no projeto original</h2>
+      </div>
+      <span class="method-badge">Modelo 1.0.0</span>
+    </div>
+
+    <div class="reference-grid">
+      <article>
+        <h3>Reciclagem</h3>
+        <ul>
+          <li>Papel: 1,8 kg CO₂e/kg</li>
+          <li>Plástico: 1,5 kg CO₂e/kg</li>
+          <li>Vidro: 0,3 kg CO₂e/kg</li>
+          <li>Metal: 9,0 kg CO₂e/kg</li>
+        </ul>
+      </article>
+      <article>
+        <h3>Compostagem</h3>
+        <p>0,25 kg CO₂e por kg de resíduo orgânico compostado.</p>
+      </article>
+      <article>
+        <h3>Agricultura</h3>
+        <p>Fatores entre 0,6 e 0,9 kg CO₂e por m²/ano, conforme o tipo produtivo.</p>
+      </article>
+      <article>
+        <h3>Pegada regional</h3>
+        <p>RR 5,1; AM 6,2; SP 7,8; MG 7,1; Brasil/outros 6,9 tCO₂e por pessoa/ano.</p>
+      </article>
+    </div>
+
+    <div class="method-note">
+      <strong>Aviso:</strong> esta é uma estimativa educativa baseada nos fatores declarados no projeto original. Não substitui inventário de emissões, auditoria ambiental ou certificação de créditos de carbono.
+    </div>
+  </section>
+
+  <footer class="footer">
+    <div class="shell footer__content">
+      <div>
+        <strong>AmazonBioEco</strong>
+        <p>Fortalecimento de negócios da sociobiodiversidade.</p>
+      </div>
+      <div class="footer__contacts">
+        <a href="tel:+5595991753070">+55 95 99175-3070</a>
+        <a href="mailto:amazonbioeco@gmail.com">amazonbioeco@gmail.com</a>
+      </div>
+    </div>
+  </footer>
+
+  <template id="product-template">
+    <div class="product-row">
+      <label class="field">
+        <span>Tipo de produção</span>
+        <select class="product-type">
+          <option value="hortalicas">Hortaliças</option>
+          <option value="frutiferas">Frutíferas</option>
+          <option value="criacoes">Criação animal</option>
+          <option value="agrofloresta">Agrofloresta</option>
+          <option value="graos">Grãos</option>
+          <option value="raizes">Raízes e tubérculos</option>
+        </select>
+      </label>
+      <label class="field">
+        <span>Área <small>m²</small></span>
+        <input class="product-area" type="number" min="0" max="10000000" step="0.1" inputmode="decimal" placeholder="0,0">
+      </label>
+      <button class="icon-button icon-button--danger remove-product" type="button" aria-label="Remover produto" title="Remover produto">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14"/></svg>
+      </button>
+    </div>
+  </template>
+
+  <script type="module" src="./firebase.js"></script>
+  <script type="module" src="./app.js"></script>
+</body>
+</html>

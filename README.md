@@ -471,3 +471,9 @@ Para um Google Sites publicado em domínio próprio, configure no Cloud Run:
 ```text
 ALLOWED_FRAME_ANCESTORS=https://www.seudominio.org.br
 ```
+
+---
+
+## Correção v1.3.0
+
+Esta versão fixa a planilha de destino pelo ID `1IQmDzRaH0d76dzadJQ9NHfcomqrVQEG5v80FkaCQ4aA`, adiciona diagnóstico de versão e planilha e amplia a compatibilidade de incorporação no Google Sites. Consulte `CORRECAO_PLANILHA_GOOGLE_SITES.md`.

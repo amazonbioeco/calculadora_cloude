@@ -238,3 +238,5 @@ input[type="range"] { min-height: auto; padding: 0; border: 0; accent-color: var
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { scroll-behavior: auto !important; transition-duration: .001ms !important; animation-duration: .001ms !important; }
 }
+
+.app-version { margin-top: 14px; font-size: 0.78rem; opacity: 0.65; }

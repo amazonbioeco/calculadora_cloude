@@ -12,10 +12,15 @@ const PORT = Number.parseInt(process.env.PORT || '8080', 10);
 const HOST = '0.0.0.0';
 const APPS_SCRIPT_ENDPOINT = String(process.env.APPS_SCRIPT_ENDPOINT || '').trim();
 const MAX_REQUEST_BYTES = 1024 * 1024;
+const APP_VERSION = '1.3.0';
 
 const DEFAULT_FRAME_ANCESTORS = Object.freeze([
   "'self'",
-  'https://sites.google.com'
+  'https://sites.google.com',
+  'https://*.googleusercontent.com',
+  'https://www.gstatic.com',
+  'https://www.google.com',
+  'https://*.google.com'
 ]);
 
 function getAllowedFrameAncestors() {
@@ -206,7 +211,7 @@ async function proxyBackendHealth(response) {
     healthUrl.searchParams.set('action', 'health');
     const upstream = await fetch(healthUrl, {
       method: 'GET',
-      headers: { 'User-Agent': 'AmazonBioEco-CloudRun/1.2.1' },
+      headers: { 'User-Agent': `AmazonBioEco-CloudRun/${APP_VERSION}` },
       redirect: 'follow',
       signal: AbortSignal.timeout(20000)
     });
@@ -231,10 +236,11 @@ async function proxyBackendHealth(response) {
     const ready = Boolean(upstream.ok && upstreamData?.success && upstreamData?.spreadsheetReady === true);
     sendJson(response, ready ? 200 : 503, {
       ...upstreamData,
+      appVersion: APP_VERSION,
       success: ready,
       spreadsheetReady: ready,
       message: !hasSpreadsheetStatus
-        ? 'A implantação do Apps Script está desatualizada. Publique uma nova versão com o Code.gs 1.2.0.'
+        ? 'A implantação do Apps Script está desatualizada. Publique uma nova versão com o Code.gs 1.3.0.'
         : (upstreamData?.message || (ready
           ? 'Google Sheets conectado.'
           : 'A planilha ainda não está pronta para receber dados.'))
@@ -279,7 +285,7 @@ async function proxyCalculation(request, response) {
       method: 'POST',
       headers: {
         'Content-Type': 'text/plain;charset=UTF-8',
-        'User-Agent': 'AmazonBioEco-CloudRun/1.2.1'
+        'User-Agent': `AmazonBioEco-CloudRun/${APP_VERSION}`
       },
       body: JSON.stringify(parsed),
       redirect: 'follow',
@@ -324,11 +330,15 @@ const server = http.createServer(async (request, response) => {
     return;
   }
 
-  if (url.pathname === '/healthz') {
+  if (url.pathname === '/healthz' || url.pathname === '/api/version') {
     sendJson(response, 200, {
       status: 'ok',
+      success: true,
       service: 'calculadora-carbono-amazonbioeco',
-      googleSheetsBackendConfigured: Boolean(APPS_SCRIPT_ENDPOINT)
+      appVersion: APP_VERSION,
+      googleSheetsBackendConfigured: Boolean(APPS_SCRIPT_ENDPOINT),
+      googleSitesEmbeddingEnabled: true,
+      allowedFrameAncestors: ALLOWED_FRAME_ANCESTORS
     });
     return;
   }

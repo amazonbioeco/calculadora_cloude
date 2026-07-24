@@ -1,6 +1,6 @@
 const CONFIG = Object.freeze({
   SHEET_NAME: 'Cálculos de Carbono',
-  MODEL_VERSION: '1.2.0',
+  MODEL_VERSION: '1.3.0',
   TIMEZONE: 'America/Boa_Vista',
   MAX_PRODUCTS: 50,
   MAX_TEXT_LENGTH: 1000,
@@ -9,7 +9,7 @@ const CONFIG = Object.freeze({
   // Extensões > Apps Script dentro da própria Planilha Google.
   // Em um projeto independente, cole aqui o ID da planilha ou configure a
   // propriedade de script SPREADSHEET_ID.
-  SPREADSHEET_ID: '',
+  SPREADSHEET_ID: '1IQmDzRaH0d76dzadJQ9NHfcomqrVQEG5v80FkaCQ4aA',
 
   HEADERS: [
     'Data e hora',
@@ -83,8 +83,12 @@ function doGet(e) {
         service: 'AmazonBioEco Carbon Calculator API',
         modelVersion: CONFIG.MODEL_VERSION,
         spreadsheetReady: status.ready,
+        spreadsheetId: status.spreadsheetId,
+        spreadsheetUrl: status.spreadsheetUrl,
         spreadsheetName: status.spreadsheetName,
         sheetName: status.sheetName,
+        lastRow: status.lastRow,
+        modelVersion: CONFIG.MODEL_VERSION,
         message: status.message,
         timestamp: new Date().toISOString()
       });
@@ -115,10 +119,40 @@ function doPost(e) {
  * automaticamente no primeiro cálculo recebido pelo Web App.
  */
 function prepararPlanilha() {
+  const properties = PropertiesService.getScriptProperties();
+  properties.setProperty('SPREADSHEET_ID', CONFIG.SPREADSHEET_ID);
   const spreadsheet = resolveSpreadsheetAndPersistId_();
   const sheet = getOrCreateSheet_(spreadsheet);
   formatSheet_(sheet);
   return `Planilha preparada: ${sheet.getName()} | ID configurado: ${spreadsheet.getId()}`;
+}
+
+/**
+ * Execute manualmente no editor do Apps Script para comprovar a gravação.
+ * Cria uma linha de teste na planilha configurada, sem enviar e-mail.
+ */
+function testarGravacaoNaPlanilha() {
+  const result = saveCalculation_({
+    operationId: `teste-${Date.now()}`,
+    input: {
+      nome: 'Teste de integração',
+      email: 'teste@example.com',
+      enviarEmail: false,
+      estado: 'RR',
+      municipio: 'Boa Vista',
+      papel: 1,
+      plastico: 1,
+      vidro: 0,
+      metal: 0,
+      compostagem: 0,
+      praticas: 'Registro automático de diagnóstico',
+      produtos: []
+    },
+    source: 'apps-script-test',
+    userAgent: 'Apps Script editor'
+  });
+  console.log(JSON.stringify(result));
+  return result;
 }
 
 function salvarCalculoTeste(payload) {
@@ -413,10 +447,13 @@ function calculateServerSide_(input) {
 
 function resolveSpreadsheetAndPersistId_() {
   const properties = PropertiesService.getScriptProperties();
-  const configuredId = String(properties.getProperty('SPREADSHEET_ID') || CONFIG.SPREADSHEET_ID || '').trim();
+  // O ID definido no código tem prioridade para impedir que uma propriedade
+  // antiga direcione os registros para outra planilha.
+  const configuredId = String(CONFIG.SPREADSHEET_ID || properties.getProperty('SPREADSHEET_ID') || '').trim();
 
   if (configuredId) {
     try {
+      properties.setProperty('SPREADSHEET_ID', configuredId);
       return SpreadsheetApp.openById(configuredId);
     } catch (error) {
       throw new Error('O SPREADSHEET_ID configurado não pôde ser aberto. Verifique o ID e as permissões.');
@@ -441,15 +478,23 @@ function getSpreadsheetStatus_() {
     const sheet = getOrCreateSheet_(spreadsheet);
     return {
       ready: true,
+      spreadsheetId: spreadsheet.getId(),
+      spreadsheetUrl: spreadsheet.getUrl(),
       spreadsheetName: spreadsheet.getName(),
       sheetName: sheet.getName(),
-      message: 'Planilha pronta para receber cálculos.'
+      lastRow: sheet.getLastRow(),
+      message: spreadsheet.getId() === CONFIG.SPREADSHEET_ID
+        ? 'Planilha correta pronta para receber cálculos.'
+        : 'Atenção: o Apps Script está conectado a uma planilha diferente da configurada.'
     };
   } catch (error) {
     return {
       ready: false,
+      spreadsheetId: '',
+      spreadsheetUrl: '',
       spreadsheetName: '',
       sheetName: CONFIG.SHEET_NAME,
+      lastRow: 0,
       message: safeErrorMessage_(error)
     };
   }

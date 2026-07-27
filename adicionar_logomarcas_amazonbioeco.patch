@@ -1,0 +1,83 @@
+diff --git a/public/index.html b/public/index.html
+--- a/public/index.html
++++ b/public/index.html
+@@
+       <div class="brand">
+-        <div class="brand__mark" aria-hidden="true">
+-          <svg viewBox="0 0 64 64" role="img"><path d="M51 9C31 10 17 20 13 37c-2 9 2 16 9 18 8 2 17-3 22-12 6-10 7-22 7-34Z"/><path class="brand__vein" d="M18 49c8-11 17-20 29-30M27 39c4 0 8 1 12 3M32 32c-1-4-1-8 0-12"/></svg>
+-        </div>
++        <img
++          class="brand__logo"
++          src="https://blogger.googleusercontent.com/img/b/R29vZ2xl/AVvXsEiioUQsI9VJlOwqYip5zVzTExCEMsbKPcYDVKSKlX6fYpBCYmomCOqfF6EU2o8J67Gihwh2WEvGxlN8dI7mHAKZvNaoRKKyngtTtXCVUJF6ShajvRsrM3ASkRc-RDnZCL_gkrvRpAARewtLvX_cTVle66AxhNmwYZYhH_I0zahU8EEUnCosauLBpLObLHO2/s500/Design%20sem%20nome.png"
++          alt="Logomarca AmazonBioEco"
++          width="500"
++          height="500"
++          decoding="async"
++          referrerpolicy="no-referrer">
+         <div>
+@@
+   <footer class="footer">
++    <div class="sponsors shell" aria-label="Instituições patrocinadoras e parceiras">
++      <p class="sponsors__title">Instituições patrocinadoras e parceiras</p>
++      <img
++        class="sponsors__image"
++        src="https://blogger.googleusercontent.com/img/a/AVvXsEhKOxot-g3ZMq6qg7HLC6jsY_VBKGSQ7LJPrU0hEjNohlZNp7d-HuOMDbcDCt8gv6tYJiuVOhTz5rCPjZRx5ENBO3GUhT-4_BnPUrIsd1iVfuX579MADW71zCkhQ6AHZhAYvkK_bXQViL8jwbBLf1kv_UToaBA2IWHReNVi9CdENpN4VTQNHKYoAStTX0tg=w640-h80"
++        alt="Logomarcas das instituições patrocinadoras e parceiras"
++        width="640"
++        height="80"
++        loading="lazy"
++        decoding="async"
++        referrerpolicy="no-referrer">
++    </div>
+     <div class="shell footer__content">
+
+diff --git a/public/styles.css b/public/styles.css
+--- a/public/styles.css
++++ b/public/styles.css
+@@
+ .brand { display: flex; align-items: center; gap: 1rem; }
+-.brand__mark { display: grid; width: 64px; height: 64px; place-items: center; border-radius: 18px; background: white; box-shadow: 0 12px 30px rgba(0,0,0,.16); }
+-.brand__mark svg { width: 44px; fill: var(--green-600); }
+-.brand__mark .brand__vein { fill: none; stroke: white; stroke-width: 3; stroke-linecap: round; }
++.brand__logo {
++  display: block;
++  flex: 0 0 auto;
++  width: 92px;
++  height: 92px;
++  object-fit: contain;
++  padding: .35rem;
++  border-radius: 20px;
++  background: white;
++  box-shadow: 0 12px 30px rgba(0,0,0,.16);
++}
+@@
+ .footer { color: rgba(255,255,255,.86); background: var(--green-900); }
++.sponsors {
++  padding-top: 1.5rem;
++  text-align: center;
++}
++.sponsors__title {
++  margin: 0 0 .8rem;
++  color: rgba(255,255,255,.72);
++  font-size: .72rem;
++  font-weight: 850;
++  letter-spacing: .1em;
++  text-transform: uppercase;
++}
++.sponsors__image {
++  display: block;
++  width: min(100%, 760px);
++  height: auto;
++  max-height: 110px;
++  margin-inline: auto;
++  padding: .6rem 1rem;
++  object-fit: contain;
++  border-radius: 12px;
++  background: white;
++}
+ .footer__content { display: flex; align-items: center; justify-content: space-between; gap: 1rem; padding-block: 1.8rem; }
+@@
+   .brand { align-items: flex-start; }
+-  .brand__mark { width: 54px; height: 54px; border-radius: 15px; }
+-  .brand__mark svg { width: 36px; }
++  .brand__logo { width: 68px; height: 68px; border-radius: 15px; }
